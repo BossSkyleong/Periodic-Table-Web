@@ -25,7 +25,7 @@ const CONFIG = {
 let camera, scene, renderer, controls;
 
 const objects = [];
-const targets = { table: [], sphere: [], helix: [], grid: [] };
+const targets = { table: [], sphere: [], helix: [], grid: [], pyramid: [] };
 let people = [];
 const tmpVector = new THREE.Vector3();
 
@@ -81,6 +81,7 @@ function init() {
     computeSphere();
     computeHelix();
     computeGrid();
+    computePyramid();
 
     renderer = new CSS3DRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -95,6 +96,7 @@ function init() {
     document.getElementById('sphere').addEventListener('click', () => transform(targets.sphere, 2000));
     document.getElementById('helix').addEventListener('click', () => transform(targets.helix, 2000));
     document.getElementById('grid').addEventListener('click', () => transform(targets.grid, 2000));
+    document.getElementById('pyramid').addEventListener('click', () => transform(targets.pyramid, 2000));
 
     transform(targets.table, 2000);
 
@@ -105,7 +107,7 @@ function buildTile(p, index) {
     const el = document.createElement('div');
     el.className = 'element';
 
-    
+
     const colorRGBA = getColorRGBA(p.netWorth);
     el.style.backgroundColor = colorRGBA;
     el.style.border = `1px solid ${colorRGBA.replace(/[\d.]+\)$/, '1)')}`;
@@ -114,7 +116,7 @@ function buildTile(p, index) {
     const topRow = document.createElement('div');
     topRow.className = 'top-row';
 
-    
+
     const number = document.createElement('div');
     number.className = 'number';
     number.textContent = index;
@@ -127,19 +129,19 @@ function buildTile(p, index) {
 
     el.appendChild(topRow);
 
-    
+
     const img = document.createElement('img');
     img.className = 'photo'
     img.src = p.photo;
     el.appendChild(img);
 
-    
+
     const details = document.createElement('div');
     details.className = 'details';
-    
+
     const firstName = p.name.split(' ')[0];
     details.innerHTML = `<strong>${escapeHtml(firstName)}</strong><br>${escapeHtml(p.interest)}`;
-    
+
     el.appendChild(details);
 
     return el;
@@ -147,20 +149,20 @@ function buildTile(p, index) {
 
 
 function getColorRGBA(nw) {
-    if (nw < CONFIG.low_max) return 'rgba(239, 48, 34, 0.83)';   
-    if (nw < CONFIG.high_min) return 'rgba(249, 200, 53, 0.81)'; 
-    return 'rgba(58, 159, 72, 0.77)';                            
+    if (nw < CONFIG.low_max) return 'rgba(239, 48, 34, 0.83)';
+    if (nw < CONFIG.high_min) return 'rgba(249, 200, 53, 0.81)';
+    return 'rgba(58, 159, 72, 0.77)';
 }
 
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (m) {
         switch (m) {
-            case '&':  return '&amp;';
-            case '<':  return '&lt;';
-            case '>':  return '&gt;';
-            case '"':  return '&quot;';
-            case "'":  return '&#39;';
-            default:   return m;
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+            default: return m;
         }
     });
 }
@@ -184,7 +186,7 @@ function computeTable() {
 }
 
 function computeSphere() {
-    const l = objects.length; 
+    const l = objects.length;
     for (let i = 0; i < l; i++) {
         const phi = Math.acos(-1 + (2 * i) / l);
         const theta = Math.sqrt(l * Math.PI) * phi;
@@ -209,7 +211,7 @@ function computeHelix() {
         const idx = Math.floor(i / 2);
         const theta = idx * angleStep + Math.PI + (strand ? Math.PI : 0);
         const y = (idx - (pairs - 1) / 2) * yStep + yOffset;
-        
+
         const o = new THREE.Object3D();
         o.position.setFromCylindricalCoords(radius, theta, y);
         tmpVector.set(o.position.x * 2, o.position.y, o.position.z * 2);
@@ -244,6 +246,72 @@ function computeGrid() {
         targets.grid.push(o);
     });
 }
+
+function computePyramid() {
+    const l = objects.length;
+    const faceCount = 4;
+    const base = Math.floor(l / faceCount);
+    const extra = l % faceCount;
+    const maxPerFace = base + (extra ? 1 : 0);
+
+    let n = 1;
+    while ((n * (n + 1)) / 2 < maxPerFace) n++;
+
+    const inset = 0.85;
+    const step = CONFIG.spacing_y * 1.15;
+    const edge = (step * Math.max(n - 1, 1)) / inset;
+    const R = edge * Math.sqrt(6) / 4;
+    const rho = edge / Math.sqrt(3);
+
+    const top = new THREE.Vector3(0, R, 0);
+    const b = [0, 1, 2].map(k => {
+        const a = (k * 2 * Math.PI) / 3;
+        return new THREE.Vector3(rho * Math.cos(a), -R / 3, rho * Math.sin(a))
+    });
+
+    const faces = [
+        [top, b[0], b[1]],
+        [top, b[1], b[2]],
+        [top, b[2], b[0]],
+        [b[0], b[1], b[2]]
+    ];
+
+    let idx = 0;
+    faces.forEach((verts, f) => {
+        const k = base + (f < extra ? 1 : 0);
+        const G = new THREE.Vector3().add(verts[0]).add(verts[1]).add(verts[2]).divideScalar(3);
+        const [A, B, C] = verts.map(v => G.clone().add(v.clone().sub(G).multiplyScalar(inset)));
+
+        const normal = G.clone().normalize();
+        const mid = B.clone().add(C).multiplyScalar(0.5);
+        const up = A.clone().sub(mid).normalize();
+        const right = new THREE.Vector3().crossVectors(up, normal).normalize();
+        const q = new THREE.Quaternion().setFromRotationMatrix(
+            new THREE.Matrix4().makeBasis(right, up, normal)
+        );
+
+        let placed = 0;
+        for(let r = 0; r < n && placed < k; r++){
+            const inRow = Math.min(r+1, k - placed);
+            const t = n > 1 ? r / (n -1) : 0;
+            const rowStart = A.clone().lerp(B, t);
+            const rowEnd = A.clone().lerp(C, t);
+
+            for (let j = 0; j < inRow; j++){
+                const c = (r + 1 - inRow) / 2 + j;
+                const s = r === 0 ? 0 : c / r;
+
+                const o = new THREE.Object3D();
+                o.position.copy(rowStart).lerp(rowEnd, s);
+                o.quaternion.copy(q);
+                targets.pyramid[idx++] = o;
+                placed++;
+            }
+        }
+    });
+}
+
+
 
 function transform(targets, duration) {
     TWEEN.removeAll();
